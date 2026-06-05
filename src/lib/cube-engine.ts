@@ -148,7 +148,8 @@ export async function findCardsForCube(
   const queries: string[] = [];
 
   for (const kw of config.themeKeywords) {
-    if (kw.trim()) queries.push(`(o:"${kw}" OR t:"${kw}")`);
+    const safe = kw.trim().replace(/"/g, '');
+    if (safe) queries.push(`(o:"${safe}" OR t:"${safe}")`);
   }
 
   const formatQuery = config.formatRestrictions
@@ -167,6 +168,7 @@ export async function findCardsForCube(
   if (!query.trim()) {
     const broadQueries = ['f:modern', 'f:legacy', 'f:vintage'];
     for (const q of broadQueries) {
+      console.log('[Cube] falling back to broad query:', q);
       const result = await searchCards(q, 3);
       if (result.cards.length > 0) return { cards: result.cards, error: null };
       if (result.error) return { cards: [], error: result.error };
@@ -174,6 +176,7 @@ export async function findCardsForCube(
     return { cards: [], error: 'No cards found across broad format queries. Check your network connection.' };
   }
 
+  console.log('[Cube] Scryfall query:', query);
   callbacks.onProgress(0, `Searching Scryfall: ${query}`, 2);
   const result = await searchCards(query, 8);
   if (result.error && result.cards.length === 0) {

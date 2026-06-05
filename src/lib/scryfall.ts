@@ -92,6 +92,7 @@ export async function searchCards(query: string, maxPages: number = 5): Promise<
     await rateLimit();
     try {
       const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&page=${page}`;
+      console.log('[Scryfall] GET', url);
       const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
