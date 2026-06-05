@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, ChevronRight, ChevronLeft, BarChart3, Zap } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Boxes, BarChart3, Zap } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 
 const steps = [
