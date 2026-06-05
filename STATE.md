@@ -66,7 +66,9 @@ npm run electron:build
 | # | Commit | Issue |
 |---|---|---|
 | 1 | `5ecbe6a` | Missing `import './globals.css'` in main.tsx — no Tailwind styles |
-| 2 | `5ecbe6a` | `Boxes` icon accidentally removed from OnboardingModal.tsx import during lint fix — caused `ReferenceError`, entire app failed to mount |
+| 2 | `5ecbe6a` | `Boxes` icon accidentally removed from OnboardingModal.tsx import — `ReferenceError`, entire app failed to mount |
+| 3 | `168b078` | `searchCards` silently swallowed all errors — surfaced Scryfall errors as toasts |
+| 4 | `6734de2` | Theme keywords with quotes broke Scryfall query syntax — added quote stripping + debug logging |
 
 ## Architecture decisions
 
