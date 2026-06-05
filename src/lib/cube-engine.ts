@@ -134,21 +134,21 @@ export async function buildCube(
   };
 }
 
-export function findCandidateCards(
+export async function findCandidateCards(
   config: CubeConfig,
   callbacks: BuildCallbacks,
-): Promise<ScryfallCard[]> {
+): Promise<{ cards: ScryfallCard[]; error: string | null }> {
   return findCardsForCube(config, callbacks);
 }
 
 export async function findCardsForCube(
   config: CubeConfig,
   callbacks: BuildCallbacks,
-): Promise<ScryfallCard[]> {
+): Promise<{ cards: ScryfallCard[]; error: string | null }> {
   const queries: string[] = [];
 
   for (const kw of config.themeKeywords) {
-    queries.push(`(o:"${kw}" OR t:"${kw}")`);
+    if (kw.trim()) queries.push(`(o:"${kw}" OR t:"${kw}")`);
   }
 
   const formatQuery = config.formatRestrictions
@@ -157,7 +157,8 @@ export async function findCardsForCube(
 
   const cubeTypeQuery = buildCubeTypeQuery(config.cubeType);
 
-  const parts = [cubeTypeQuery];
+  const parts: string[] = [];
+  if (cubeTypeQuery) parts.push(cubeTypeQuery);
   if (formatQuery) parts.push(`(${formatQuery})`);
   if (queries.length > 0) parts.push(`(${queries.join(' OR ')})`);
 
@@ -167,14 +168,18 @@ export async function findCardsForCube(
     const broadQueries = ['f:modern', 'f:legacy', 'f:vintage'];
     for (const q of broadQueries) {
       const result = await searchCards(q, 3);
-      if (result.cards.length > 0) return result.cards;
+      if (result.cards.length > 0) return { cards: result.cards, error: null };
+      if (result.error) return { cards: [], error: result.error };
     }
-    return [];
+    return { cards: [], error: 'No cards found across broad format queries. Check your network connection.' };
   }
 
   callbacks.onProgress(0, `Searching Scryfall: ${query}`, 2);
   const result = await searchCards(query, 8);
-  return result.cards;
+  if (result.error && result.cards.length === 0) {
+    return { cards: [], error: result.error };
+  }
+  return { cards: result.cards, error: null };
 }
 
 function buildCubeTypeQuery(cubeType: string): string {

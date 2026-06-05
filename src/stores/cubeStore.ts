@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Cube, CubeConfig, CubeCard, ScryfallCard, CubeAnalysis, BuildMode, CubeType, CubeSize, ArchetypeKey } from '../lib/types';
+import type { Cube, CubeConfig, CubeCard, CubeAnalysis, BuildMode, CubeType, CubeSize, ArchetypeKey } from '../lib/types';
 import { buildCube, findCandidateCards } from '../lib/cube-engine';
 import { useToastStore } from './toastStore';
 
@@ -93,7 +93,7 @@ export const useCubeStore = create<CubeState>((set, get) => ({
     try {
       const toast = useToastStore.getState().addToast;
 
-      const cardPool: ScryfallCard[] = await findCandidateCards(config, {
+      const searchResult = await findCandidateCards(config, {
         onProgress: (phase, message, percent) => {
           if (!cancelled) set({ buildPhase: phase, buildMessage: message, buildPercent: percent });
         },
@@ -102,8 +102,16 @@ export const useCubeStore = create<CubeState>((set, get) => ({
 
       if (cancelled) { set({ isBuilding: false, cancelBuild: null }); return; }
 
+      if (searchResult.error) {
+        toast(searchResult.error, 'error');
+        set({ isBuilding: false, cancelBuild: null });
+        return;
+      }
+
+      const cardPool = searchResult.cards;
+
       if (cardPool.length < 60) {
-        toast(`Only found ${cardPool.length} cards matching your criteria. Try broader filters.`, 'error');
+        toast(`Only found ${cardPool.length} cards matching your criteria. Try broader filters or a different cube type.`, 'error');
         set({ isBuilding: false, cancelBuild: null });
         return;
       }

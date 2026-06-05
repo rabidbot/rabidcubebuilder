@@ -71,15 +71,22 @@ export async function fetchCardsBatch(ids: string[]): Promise<ScryfallCard[]> {
   return cards;
 }
 
-export async function searchCards(query: string, maxPages: number = 5): Promise<{ cards: ScryfallCard[]; total: number }> {
+export interface SearchResult {
+  cards: ScryfallCard[];
+  total: number;
+  error: string | null;
+}
+
+export async function searchCards(query: string, maxPages: number = 5): Promise<SearchResult> {
   if (isElectron()) {
     const result: ScryfallSearchResult = await window.electronAPI.scryfall.search(query, maxPages);
-    if (result.ok && result.cards) return { cards: result.cards, total: result.total || result.cards.length };
-    return { cards: [], total: 0 };
+    if (result.ok && result.cards) return { cards: result.cards, total: result.total || result.cards.length, error: null };
+    return { cards: [], total: 0, error: result.error || `Scryfall request failed` };
   }
 
   const allCards: ScryfallCard[] = [];
   let page = 1;
+  let lastError: string | null = null;
 
   for (let i = 0; i < maxPages; i++) {
     await rateLimit();
@@ -88,19 +95,26 @@ export async function searchCards(query: string, maxPages: number = 5): Promise<
       const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        if (err.code === 'not_found') break;
-        continue;
+        if (err.code === 'not_found') {
+          if (i === 0 && allCards.length === 0) lastError = 'No cards matched your query';
+          break;
+        }
+        lastError = err.details || err.error || `Scryfall returned HTTP ${res.status}`;
+        console.error(`[Scryfall] search error (HTTP ${res.status}):`, err);
+        break;
       }
       const json = await res.json();
       if (json.data) allCards.push(...json.data);
       if (!json.has_more) break;
       page++;
-    } catch {
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Network error — check your connection';
+      console.error(`[Scryfall] network error:`, err);
       break;
     }
   }
 
-  return { cards: allCards, total: allCards.length };
+  return { cards: allCards, total: allCards.length, error: lastError };
 }
 
 export function getCardImageUrl(card: ScryfallCard, size: 'small' | 'normal' | 'large'): string | null {
