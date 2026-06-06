@@ -125,6 +125,8 @@ export const useCubeStore = create<CubeState>((set, get) => ({
 
       if (cancelled) { set({ isBuilding: false, cancelBuild: null }); return; }
 
+      console.log('[cubeStore] buildCube returned — cubeCards:', cube.cubeCards.length);
+
       set({
         cube,
         cubeCards: cube.cubeCards,
@@ -135,6 +137,9 @@ export const useCubeStore = create<CubeState>((set, get) => ({
         buildPercent: 100,
         cancelBuild: null,
       });
+
+      console.log('[cubeStore] after set — s.cube.cubeCards:', cube.cubeCards.length);
+      console.log('[cubeStore] after set — s.cubeCards:', cube.cubeCards.length);
 
       toast(`Cube built: ${cube.cubeCards.length} cards across ${cube.slots.length} slots`, 'success');
     } catch (err) {

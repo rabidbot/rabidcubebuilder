@@ -46,6 +46,8 @@ export async function buildCube(
   callbacks.onProgress(1, 'Enriching cards...', 5);
   if (callbacks.cancelled()) throw new Error('Build cancelled');
 
+  console.log('[CubeEngine] card pool size:', cardPool.length);
+
   let candidates: CubeCard[] = cardPool.map((scryfallData) => ({
     scryfallData,
     archetypeFits: [],
@@ -81,9 +83,11 @@ export async function buildCube(
 
   callbacks.onProgress(4, 'Applying filters...', 25);
   candidates = filterCandidates(candidates, cfg);
+  console.log('[CubeEngine] after filterCandidates:', candidates.length);
   if (candidates.length > MAX_CANDIDATES) {
     candidates.sort((a, b) => b.powerScore - a.powerScore);
     candidates = candidates.slice(0, MAX_CANDIDATES);
+    console.log('[CubeEngine] trimmed to MAX_CANDIDATES:', candidates.length);
   }
   if (callbacks.cancelled()) throw new Error('Build cancelled');
 
@@ -95,6 +99,8 @@ export async function buildCube(
 
   callbacks.onProgress(6, 'Selecting cards...', 35);
   const { selectedIds } = greedySlotSelection(candidates, slots, cfg, selectedArches, callbacks);
+  console.log('[CubeEngine] after greedy selection — selectedIds:', selectedIds.size);
+  console.log('[CubeEngine] slots:', slots.map((s) => `${s.color}:${s.filled}/${s.allocated}`).join(', '));
   if (callbacks.cancelled()) throw new Error('Build cancelled');
 
   callbacks.onProgress(7, 'Selecting fixing lands...', 65);
@@ -117,11 +123,14 @@ export async function buildCube(
 
   callbacks.onProgress(9, 'Validating synergy density...', 85);
   const selectedCards = candidates.filter((c) => selectedIds.has(c.scryfallData.id));
+  console.log('[CubeEngine] selectedCards (filter from candidates):', selectedCards.length);
+  console.log('[CubeEngine] candidates length at filter time:', candidates.length);
   const analysis = analyzeCube(selectedCards, slots, cfg, selectedArches);
 
   if (callbacks.cancelled()) throw new Error('Build cancelled');
 
   const now = new Date().toISOString();
+  console.log('[CubeEngine] returning cube with cubeCards:', selectedCards.length);
   return {
     id: crypto.randomUUID(),
     name: `Cube ${now.slice(0, 10)}`,
