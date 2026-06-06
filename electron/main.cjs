@@ -258,7 +258,10 @@ function setupIPC() {
 
   ipcMain.handle('fs:writeFile', async (_event, filePath, content) => {
     try {
+      console.log('[fs:writeFile] writing', content.length, 'chars to', filePath);
       fs.writeFileSync(filePath, content, 'utf-8');
+      const written = fs.readFileSync(filePath, 'utf-8');
+      console.log('[fs:writeFile] written', written.length, 'chars to disk');
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };

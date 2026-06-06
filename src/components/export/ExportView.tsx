@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, Clipboard, FileText } from 'lucide-react';
+import { ArrowLeft, Clipboard, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useCubeStore } from '../../stores/cubeStore';
 import { useToastStore } from '../../stores/toastStore';
 import { serializeCSV } from '../../lib/csv-parser';
@@ -12,20 +12,13 @@ export default function ExportView() {
   const addToast = useToastStore((s) => s.addToast);
   const [format, setFormat] = useState<'cubeCobra' | 'manaBox' | 'text'>('cubeCobra');
 
-  if (!cube) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-        <Download className="w-12 h-12 text-text-muted mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-text mb-2">No Cube to Export</h2>
-        <p className="text-text-secondary mb-4">Build a cube first.</p>
-        <button onClick={() => navigate('/wizard')} className="px-4 py-2 rounded-md bg-primary text-black font-medium hover:bg-primary-light">
-          Go to Builder
-        </button>
-      </div>
-    );
-  }
+  const { content, lineCount, charCount, totalCards, stats } = useMemo(() => {
+    if (!cube) return { content: '', lineCount: 0, charCount: 0, totalCards: 0, stats: '' };
 
-  const generateContent = (): string => {
+    const totalCards = cube.cubeCards.length;
+    let content = '';
+    let stats = '';
+
     switch (format) {
       case 'cubeCobra': {
         const headers = ['name', 'cmc', 'type', 'color', 'set', 'collector_number', 'status', 'tags'];
@@ -42,7 +35,9 @@ export default function ExportView() {
             tags: fits.join(';'),
           };
         });
-        return serializeCSV(headers, rows);
+        content = serializeCSV(headers, rows);
+        stats = `CSV rows: ${rows.length}`;
+        break;
       }
       case 'manaBox': {
         const headers = ['Name', 'Set Code', 'Collector Number', 'Quantity', 'Foil', 'Condition', 'Language'];
@@ -55,7 +50,9 @@ export default function ExportView() {
           Condition: 'NM',
           Language: 'English',
         }));
-        return serializeCSV(headers, rows);
+        content = serializeCSV(headers, rows);
+        stats = `CSV rows: ${rows.length}`;
+        break;
       }
       case 'text': {
         const grouped: Record<string, string[]> = {};
@@ -64,21 +61,51 @@ export default function ExportView() {
           if (!grouped[color]) grouped[color] = [];
           grouped[color].push(`  ${cc.scryfallData.name} [${cc.scryfallData.cmc}] ${cc.scryfallData.type_line || ''}`);
         }
-        let out = `${cube.name}\n${cube.cubeCards.length} cards\n\n`;
+
+        const colorCounts = Object.entries(grouped)
+          .map(([c, cards]) => `${c}:${cards.length}`)
+          .join(', ');
+
+        let out = `${cube.name}\n${totalCards} cards\n\n`;
         for (const [color, cards] of Object.entries(grouped).sort()) {
           out += `${color}:\n${cards.join('\n')}\n\n`;
         }
-        return out;
+        content = out;
+        stats = `Colors — ${colorCounts}`;
+        break;
       }
     }
-  };
 
-  const content = generateContent();
+    const lineCount = content.split('\n').length;
+    const charCount = content.length;
+
+    console.log('[Export] format:', format);
+    console.log('[Export] cubeCards.length:', totalCards);
+    console.log('[Export] content chars:', charCount);
+    console.log('[Export] content lines:', lineCount);
+    console.log('[Export] stats:', stats);
+
+    return { content, lineCount, charCount, totalCards, stats };
+  }, [cube, format]);
+
+  if (!cube) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <FileText className="w-12 h-12 text-text-muted mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-text mb-2">No Cube to Export</h2>
+        <p className="text-text-secondary mb-4">Build a cube first.</p>
+        <button onClick={() => navigate('/wizard')} className="px-4 py-2 rounded-md bg-primary text-black font-medium hover:bg-primary-light">
+          Go to Builder
+        </button>
+      </div>
+    );
+  }
 
   const handleCopy = async () => {
+    console.log('[Export] copy — chars:', content.length, 'lines:', content.split('\n').length);
     try {
       await navigator.clipboard.writeText(content);
-      addToast('Copied to clipboard', 'success');
+      addToast(`Copied ${totalCards} cards`, 'success');
     } catch {
       addToast('Failed to copy', 'error');
     }
@@ -86,16 +113,21 @@ export default function ExportView() {
 
   const handleDownload = async () => {
     const ext = format === 'text' ? 'txt' : 'csv';
-    const filename = `cube-${cube.name.replace(/\s+/g, '-').toLowerCase()}.${ext}`;
+    const safeName = cube.name.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase().replace(/-+/g, '-');
+    const filename = `cube-${safeName}.${ext}`;
+
+    console.log('[Export] download — chars:', content.length, 'lines:', content.split('\n').length);
 
     if (isElectron()) {
+      console.log('[Export] electron save dialog...');
       const path = await window.electronAPI.dialog.saveFile(filename);
       if (path) {
+        console.log('[Export] writing to:', path);
         const result = await window.electronAPI.fs.writeFile(path, content);
         if (result.ok) {
-          addToast('Saved!', 'success');
+          addToast(`Saved ${totalCards} cards to ${path.split(/[/\\]/).pop()}`, 'success');
         } else {
-          addToast(`Failed: ${result.error}`, 'error');
+          addToast(`Write failed: ${result.error}`, 'error');
         }
       }
     } else {
@@ -106,9 +138,13 @@ export default function ExportView() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      addToast('Downloaded!', 'success');
+      addToast(`Downloaded ${totalCards} cards`, 'success');
     }
   };
+
+  const cardLinesMatch = format === 'text'
+    ? lineCount >= totalCards + 10
+    : lineCount >= totalCards + 1;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -144,10 +180,32 @@ export default function ExportView() {
       </div>
 
       <div className="glass rounded-xl p-6 border border-border/30 mb-6">
-        <h3 className="text-lg font-bold text-text mb-4">Preview</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-text">Preview</h3>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-text-muted">
+              {totalCards} cards &middot; {lineCount} lines &middot; {(charCount / 1024).toFixed(1)} KB
+            </span>
+            <span className={`flex items-center gap-1 font-medium ${
+              cardLinesMatch ? 'text-success' : 'text-danger'
+            }`}>
+              {cardLinesMatch
+                ? <><CheckCircle className="w-3.5 h-3.5" /> Complete</>
+                : <><AlertTriangle className="w-3.5 h-3.5" /> Mismatch</>
+              }
+            </span>
+          </div>
+        </div>
+        {!cardLinesMatch && (
+          <div className="mb-3 p-3 rounded-lg border border-danger/30 bg-danger/5 text-danger text-xs">
+            Expected {totalCards} card lines but got {lineCount} total lines. Check the console for diagnostics.
+          </div>
+        )}
+        <div className="bg-card border border-border rounded-lg p-4 text-text-secondary text-xs text-mono mb-2">
+          {stats}
+        </div>
         <pre className="bg-card border border-border rounded-lg p-4 text-text-secondary text-xs max-h-96 overflow-auto whitespace-pre-wrap">
-          {content.slice(0, 5000)}
-          {content.length > 5000 && '\n\n... (truncated)'}
+          {content.length > 5000 ? content.slice(0, 5000) + '\n\n... (truncated for preview — file will be complete)' : content}
         </pre>
       </div>
 
