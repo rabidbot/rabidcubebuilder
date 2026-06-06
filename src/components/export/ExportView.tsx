@@ -1,10 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clipboard, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useCubeStore } from '../../stores/cubeStore';
 import { useToastStore } from '../../stores/toastStore';
 import { serializeCSV } from '../../lib/csv-parser';
-import { isElectron } from '../../lib/electron-api';
 
 export default function ExportView() {
   const navigate = useNavigate();
@@ -88,6 +87,83 @@ export default function ExportView() {
     return { content, lineCount, charCount, totalCards, stats };
   }, [cube, format]);
 
+  const contentRef = useRef(content);
+  useEffect(() => { contentRef.current = content; }, [content]);
+
+  const handleCopy = useCallback(async () => {
+    const text = contentRef.current;
+    console.log('[Export] copy — chars:', text.length, 'lines:', text.split('\n').length);
+
+    let copied = false;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      console.warn('[Export] Clipboard API failed, falling back to execCommand');
+    }
+
+    if (!copied) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        copied = true;
+      } catch (err) {
+        console.error('[Export] execCommand copy failed:', err);
+      }
+    }
+
+    if (copied) {
+      const totalCards = cube?.cubeCards.length ?? 0;
+      addToast(`Copied ${totalCards} cards to clipboard`, 'success');
+    } else {
+      addToast('Failed to copy — try Download instead', 'error');
+    }
+  }, [cube, addToast]);
+
+  const handleDownload = useCallback(async () => {
+    const text = contentRef.current;
+    const ext = format === 'text' ? 'txt' : 'csv';
+    const safeName = (cube?.name || 'cube').replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase().replace(/-+/g, '-');
+    const filename = `cube-${safeName}.${ext}`;
+
+    console.log('[Export] download — chars:', text.length, 'lines:', text.split('\n').length);
+    console.log('[Export] download — first 80 chars:', text.slice(0, 80));
+
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    setTimeout(async () => {
+      URL.revokeObjectURL(url);
+      try {
+        const response = await fetch(url);
+        const readBack = await response.text();
+        if (readBack.length !== text.length) {
+          addToast(`Download mismatch: wrote ${readBack.length} chars, expected ${text.length}`, 'error');
+        } else {
+          const totalCards = cube?.cubeCards.length ?? 0;
+          addToast(`Downloaded ${totalCards} cards (${readBack.length} chars, ${readBack.split('\n').length} lines)`, 'success');
+        }
+      } catch {
+        const totalCards = cube?.cubeCards.length ?? 0;
+        addToast(`Downloaded ${totalCards} cards`, 'success');
+      }
+    }, 500);
+  }, [cube, format, addToast]);
+
   if (!cube) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
@@ -100,47 +176,6 @@ export default function ExportView() {
       </div>
     );
   }
-
-  const handleCopy = async () => {
-    console.log('[Export] copy — chars:', content.length, 'lines:', content.split('\n').length);
-    try {
-      await navigator.clipboard.writeText(content);
-      addToast(`Copied ${totalCards} cards`, 'success');
-    } catch {
-      addToast('Failed to copy', 'error');
-    }
-  };
-
-  const handleDownload = async () => {
-    const ext = format === 'text' ? 'txt' : 'csv';
-    const safeName = cube.name.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase().replace(/-+/g, '-');
-    const filename = `cube-${safeName}.${ext}`;
-
-    console.log('[Export] download — chars:', content.length, 'lines:', content.split('\n').length);
-
-    if (isElectron()) {
-      console.log('[Export] electron save dialog...');
-      const path = await window.electronAPI.dialog.saveFile(filename);
-      if (path) {
-        console.log('[Export] writing to:', path);
-        const result = await window.electronAPI.fs.writeFile(path, content);
-        if (result.ok) {
-          addToast(`Saved ${totalCards} cards to ${path.split(/[/\\]/).pop()}`, 'success');
-        } else {
-          addToast(`Write failed: ${result.error}`, 'error');
-        }
-      }
-    } else {
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      addToast(`Downloaded ${totalCards} cards`, 'success');
-    }
-  };
 
   const cardLinesMatch = format === 'text'
     ? lineCount >= totalCards + 10
@@ -201,7 +236,7 @@ export default function ExportView() {
             Expected {totalCards} card lines but got {lineCount} total lines. Check the console for diagnostics.
           </div>
         )}
-        <div className="bg-card border border-border rounded-lg p-4 text-text-secondary text-xs text-mono mb-2">
+        <div className="bg-card border border-border rounded-lg p-4 text-text-secondary text-xs mb-2">
           {stats}
         </div>
         <pre className="bg-card border border-border rounded-lg p-4 text-text-secondary text-xs max-h-96 overflow-auto whitespace-pre-wrap">
