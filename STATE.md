@@ -69,6 +69,8 @@ npm run electron:build
 | 2 | `5ecbe6a` | `Boxes` icon accidentally removed from OnboardingModal.tsx import — `ReferenceError`, entire app failed to mount |
 | 3 | `168b078` | `searchCards` silently swallowed all errors — surfaced Scryfall errors as toasts |
 | 4 | `6734de2` | Theme keywords with quotes broke Scryfall query syntax — added quote stripping + debug logging |
+| 5 | `782fe42` | Scryfall requests in Electron had no User-Agent header — HTTP 400 on every request |
+| 6 | `a168fb6` | Export truncation diagnostics — added console + UI logging to pinpoint where content is lost |
 
 ## Architecture decisions
 
