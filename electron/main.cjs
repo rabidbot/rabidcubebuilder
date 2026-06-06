@@ -128,7 +128,13 @@ app.on('window-all-closed', () => {
 
 function scryfallRequest(path) {
   return new Promise((resolve) => {
-    const req = net.request(`https://api.scryfall.com${path}`);
+    const req = net.request({
+      url: `https://api.scryfall.com${path}`,
+      headers: {
+        'User-Agent': 'RabidCubeBuilder/0.1.0',
+        'Accept': 'application/json',
+      },
+    });
     req.on('response', (response) => {
       let body = '';
       response.on('data', (chunk) => { body += chunk.toString(); });
@@ -311,11 +317,13 @@ function setupIPC() {
 
     for (let i = 0; i < limit; i++) {
       const encodedQuery = encodeURIComponent(query);
-      const url = `/cards/search?q=${encodedQuery}&page=${page}`;
-      const result = await enqueueScryfall(() => scryfallRequest(url));
+      const path = `/cards/search?q=${encodedQuery}&page=${page}`;
+      console.log('[Scryfall:search]', `https://api.scryfall.com${path}`);
+      const result = await enqueueScryfall(() => scryfallRequest(path));
 
       if (!result.ok) {
         if (result.data?.code === 'not_found') break;
+        console.error('[Scryfall:search] error:', result.error, result.data?.details || '');
         return { ok: false, error: result.error, cards: allCards };
       }
 

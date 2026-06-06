@@ -79,6 +79,7 @@ export interface SearchResult {
 
 export async function searchCards(query: string, maxPages: number = 5): Promise<SearchResult> {
   if (isElectron()) {
+    console.log('[Scryfall] search via IPC:', query, 'maxPages:', maxPages);
     const result: ScryfallSearchResult = await window.electronAPI.scryfall.search(query, maxPages);
     if (result.ok && result.cards) return { cards: result.cards, total: result.total || result.cards.length, error: null };
     return { cards: [], total: 0, error: result.error || `Scryfall request failed` };
