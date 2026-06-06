@@ -1,19 +1,52 @@
 # STATE.md — Session Log & SOPs for Rabid Cube Builder
 
-## Current state (2026-06-05)
+## Current state (2026-06-06)
 
 - **Repo:** https://github.com/rabidbot/rabidcubebuilder
 - **Branch:** `main` (clean, up to date with origin)
-- **Commits:** 2 (bootstrap + bugfix)
-- **Last version:** `0.1.0` in package.json
-- **Build status:** GitHub Actions queued after each push, builds Windows .exe + publishes release
-- **CI/CD:** `.github/workflows/build.yml` — runs on push to main, `windows-latest`, Node 22, `npm ci && npm run electron:build`
+- **Commits:** 10 (bootstrap + 7 fixes + 2 state updates)
+- **Last version:** `0.1.6` in package.json
+- **Build status:** GitHub Actions runs on every push, builds Windows .exe, publishes release
+- **CI/CD:** `.github/workflows/build.yml` — push to main → `windows-latest`, Node 22, `npm ci && npm run electron:build`
 - **Sibling project:** `/home/rabid/edh-deckbuilder/` — Commander deck builder (same stack, mature at v0.1.51)
+
+## Git SOPs — ALWAYS DO THIS AFTER EVERY CHANGE
+
+Every edit session must end with these steps, in order. Never skip any step.
+
+```
+1. LINT:     npx eslint .
+2. TYPECHK:  npx tsc --noEmit
+3. VERSION:  bump patch in package.json (0.1.X → 0.1.X+1)
+4. COMMIT:   git add -A && git commit -m "prefix: description"
+5. PUSH:     git push
+```
+
+**Commit prefixes:**
+- `feat:` — new feature or mode
+- `fix:` — bug fix
+- `chore:` — version bump, docs update, STATE.md update, non-code changes
+
+**Why this order matters:**
+- Lint catches unused imports, hook violations, and code smells BEFORE typecheck
+- Typecheck catches structural errors that lint misses
+- Version bump ensures GitHub Actions publishes a new release (electron-builder skips if tag already exists)
+- Commit + push triggers the CI/CD pipeline, so the Windows .exe is always up to date with `main`
+
+**Never:**
+- Skip the version bump — without it, new builds overwrite the old release with the same tag
+- Push without lint + typecheck passing clean
+- Commit broken WIP to `main` — use a branch for experiments
+- Amend pushed commits — always add new commits
+
+**After push:** GitHub Actions builds on `windows-latest` and publishes to https://github.com/rabidbot/rabidcubebuilder/releases. The release assets update within ~5 minutes. Download links:
+- `Rabid-Cube-Builder-Setup-0.1.X.exe` (installer)
+- `Rabid-Cube-Builder-0.1.X.exe` (portable)
 
 ## What we've built
 
 - Full Electron + React 19 + Vite 8 + TypeScript 6 + Tailwind 4 + Zustand 5 + SQL.js stack
-- 9-phase cube-building engine (`src/lib/cube-engine.ts`, ~710 lines)
+- 9-phase cube-building engine (`src/lib/cube-engine.ts`, ~715 lines)
 - 10 canonical archetype matcher with keyword scoring (`src/lib/archetype-matcher.ts`)
 - 100+ known cube staples, 60 signpost uncommons, 4-tier fixing lands (`src/lib/cube-seeds.ts`)
 - Scryfall API client with batch `/cards/collection`, `/cards/search`, single-card fetch, rate limiting (`src/lib/scryfall.ts`)
@@ -22,7 +55,7 @@
 - Cube analysis view (curves, color balance, archetype coverage, power histogram, gaps)
 - Card browser (grid/list toggle, filter by color/CMC/archetype, sort)
 - Archetype dashboard (payoffs, enablers, synergy density, missing pieces)
-- Export to CubeCobra / ManaBox / plain text formats
+- Export to CubeCobra / ManaBox / plain text formats (now uses Blob+URL bypassing IPC)
 - 3 stubbed modes (1/2/3) with TODO placeholders
 - All views wired in router, all stores working
 
@@ -52,15 +85,6 @@ npm run electron:dev
 npm run electron:build
 ```
 
-## SOPs — ALWAYS DO THIS AFTER CHANGES
-
-1. **Lint:** `npx eslint .`
-2. **Type check:** `npx tsc --noEmit`
-3. **Commit:** `git add -A && git commit -m "prefix: description"`
-4. **Push:** `git push`
-5. **Version bump:** bump patch in `package.json` before every feature/fix commit
-6. **Commit prefixes:** `feat:` for features, `fix:` for bugs, `chore:` for version-only
-
 ## Bugs we've fixed
 
 | # | Commit | Issue |
@@ -71,6 +95,7 @@ npm run electron:build
 | 4 | `6734de2` | Theme keywords with quotes broke Scryfall query syntax — added quote stripping + debug logging |
 | 5 | `782fe42` | Scryfall requests in Electron had no User-Agent header — HTTP 400 on every request |
 | 6 | `a168fb6` | Export truncation diagnostics — added console + UI logging to pinpoint where content is lost |
+| 7 | `7fd0dad` | Export download/copy truncated to ~130 cards — bypassed IPC for download (Blob + a.click), added fallback copy (execCommand) |
 
 ## Architecture decisions
 
@@ -80,21 +105,25 @@ npm run electron:build
 - **`locked` column:** pre-wired in `cube_cards` schema as `locked BOOLEAN DEFAULT FALSE`. Used by Mode 2 suggestion engine to protect untouchable cards. Not yet wired into UI.
 - **HashRouter required:** Electron `file://` compatibility.
 - **Tailwind v4:** uses `@tailwindcss/vite` plugin + `@theme` block in `globals.css` (no tailwind.config.js).
+- **Download (export):** uses Blob + `URL.createObjectURL` + `<a>.click()` in all contexts. No IPC, no `fs.writeFile`. This bypassed a truncation bug where IPC/Electron was silently cutting the content string. Post-download verification reads back the blob text and compares length.
+- **Copy (export):** primary path is `navigator.clipboard.writeText`, fallback is `document.execCommand('copy')` via hidden `<textarea>`. The Clipboard API in Electron can silently truncate large strings.
+- **Export content:** built in `useMemo` with `[cube, format]` deps. Held in `contentRef` (synced via `useEffect`) so handlers always read the latest value without stale closures.
 
 ## Key files map
 
 | File | Lines | Purpose |
 |---|---|---|
-| `src/lib/cube-engine.ts` | 710 | 9-phase build algorithm |
+| `src/lib/cube-engine.ts` | 715 | 9-phase build algorithm |
 | `src/lib/archetype-matcher.ts` | 290 | 10 archetypes, keyword scoring |
 | `src/lib/cube-seeds.ts` | 230 | Staples, signposts, fixing lands |
 | `src/lib/types.ts` | 170 | All TypeScript interfaces |
-| `src/stores/cubeStore.ts` | 160 | Build state, config, cancel |
+| `src/stores/cubeStore.ts` | 185 | Build state, config, cancel |
 | `src/components/wizard/CubeWizard.tsx` | 370 | 7-step config form |
 | `src/components/analysis/CubeAnalysisView.tsx` | 230 | Post-build dashboard |
 | `src/components/browser/CardBrowser.tsx` | 244 | Grid/list card browser |
 | `src/components/archetype/ArchetypeDashboard.tsx` | 183 | Per-archetype deep dive |
-| `electron/main.cjs` | 270 | IPC handlers, HTTP server, SQL.js |
+| `src/components/export/ExportView.tsx` | 230 | Export with self-verification |
+| `electron/main.cjs` | 340 | IPC handlers, HTTP server, SQL.js |
 
 ## Known gaps
 
